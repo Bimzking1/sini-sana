@@ -1,0 +1,19 @@
+name = "sinisana-signaling"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+
+# One Durable Object instance holds every room. WebSocket connections are
+# hibernatable, so the object sleeps when idle and wakes on messages.
+[durable_objects]
+bindings = [
+  { name = "ROOMS", class_name = "RoomDirectory" },
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomDirectory"]
+
+# Comma-separated hosts allowed to open a WebSocket. Leave empty to allow any
+# origin (handy while testing; set it to your site's host in production).
+[vars]
+ALLOWED_ORIGINS = ""

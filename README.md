@@ -78,6 +78,9 @@ server/                  The signaling server (Node + ws)
   src/index.ts           HTTP + WebSocket server (healthz, relay, expiry)
   src/rooms.ts           In-memory room registry (2 peers, TTL, sweep)
   src/signaling.ts       Message validation and limits
+workers/                 The signaling server (Cloudflare Worker + Durable Object)
+  src/index.ts           Worker fetch handler + RoomDirectory durable object
+  wrangler.toml          Worker config, DO binding, ALLOWED_ORIGINS
 src/                     The React app (Vite + TypeScript + Tailwind)
   lib/room/              Room id generation and URL parsing
   lib/signaling/         WebSocket client
@@ -113,13 +116,28 @@ the repo to Netlify (or any static host):
 netlify build   # same as npm run build:client
 ```
 
-**Signaling server** — deploy `server/` to any host that runs Node (Render,
-Railway, Fly, a VPS). Set `ALLOWED_ORIGINS` to your app's hosts and point the
-app at it with `VITE_SIGNALING_URL=wss://your-signaling-host.example`.
+**Signaling server** — the signaling server also ships as a Cloudflare Worker
+with a Durable Object (`workers/`), which runs on Cloudflare's free plan with no
+credit card. Point the app at it with
+`VITE_SIGNALING_URL=wss://<worker>.<subdomain>.workers.dev` (note `wss://`, and
+no `:3001`) and redeploy the frontend after changing it.
+
+```sh
+npx wrangler login          # one-time, opens the browser
+npm run deploy:signaling    # wrangler deploy --config workers/wrangler.toml
+```
+
+Set `ALLOWED_ORIGINS` in `workers/wrangler.toml` (or as a dashboard variable) to
+your site's host, e.g. `sinisana.netlify.app`. Leaving it empty allows any
+origin, which is fine for testing but not recommended for production.
+
+The same server also runs on any Node host (Render, Railway, Fly, a VPS):
 
 ```sh
 cd server && npm install && npm run build && npm start
 ```
+
+with `ALLOWED_ORIGINS` set to your app's hosts.
 
 ## Privacy
 

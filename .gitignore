@@ -1,6 +1,8 @@
 node_modules/
 dist/
 server/dist/
+workers/dist/
+workers/.wrangler/
 coverage/
 .env
 .env.local

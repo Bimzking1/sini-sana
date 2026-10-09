@@ -17,9 +17,10 @@
     "build:client": "vite build",
     "build:server": "npm run build --workspace server",
     "start": "npm run start --workspace server",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit && tsc -p workers/tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "deploy:signaling": "npx wrangler deploy --config workers/wrangler.toml"
   },
   "dependencies": {
     "jsqr": "^1.4.0",
@@ -28,6 +29,7 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261009.1",
     "@tailwindcss/vite": "^4.1.16",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
