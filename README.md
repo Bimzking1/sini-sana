@@ -133,22 +133,26 @@ origin, which is fine for testing but not recommended for production.
 
 **Connectivity (TURN)** — same-Wi‑Fi transfers work with STUN alone, but across
 different networks (symmetric/carrier-grade NAT, firewalled UDP) a TURN relay is
-required. The Worker hands out short-lived TURN credentials so long-term secrets
-never reach the browser. Two providers are supported; Cloudflare is tried first,
-then Metered. The app fetches `GET /ice-servers` from the signaling host and
-merges the relays into its ICE servers.
+required. The recommended setup uses a **single static TURN credential** from a
+free relay provider, supplied to the frontend as build variables. The Worker also
+serves Cloudflare's free STUN server at `GET /ice-servers`, which the app merges
+with its configured servers.
 
-*Metered / Open Relay (free, no credit card):*
+*Metered / Open Relay (free, no credit card) — recommended:*
 
 1. Create a free account at
-   <https://dashboard.metered.ca/signup?tool=turnserver>. Note your **app name**
-   (dashboard sidebar) and **secret key** (Dashboard → Developers).
-2. Store them as Worker secrets and redeploy:
-   ```sh
-   npx wrangler secret put METERED_APP_NAME   # e.g. "sinisana"
-   npx wrangler secret put METERED_SECRET_KEY
-   npx wrangler deploy --config workers/wrangler.toml
+   <https://dashboard.metered.ca/signup?tool=turnserver>.
+2. Open **TURN Server** and add (or view) a credential. Click **Show ICE Servers
+   Array** and copy the `username` and `credential`.
+3. Set these Netlify build variables and redeploy:
    ```
+   VITE_TURN_URL=turn:global.relay.metered.ca:80?transport=udp,turn:global.relay.metered.ca:443?transport=tcp,turns:global.relay.metered.ca:443?transport=tcp
+   VITE_TURN_USERNAME=<username>
+   VITE_TURN_CREDENTIAL=<credential>
+   ```
+
+   Note: Metered's free plan caps the number of credentials, so use one static
+   credential rather than minting a new one per request.
 
 *Cloudflare Realtime TURN (requires a payment method on file):*
 
@@ -160,9 +164,7 @@ merges the relays into its ICE servers.
    npx wrangler deploy --config workers/wrangler.toml
    ```
 
-With no provider configured the Worker serves Cloudflare's free STUN server
-only. You can also skip the Worker and set `VITE_TURN_URL` / `VITE_TURN_USERNAME`
-/ `VITE_TURN_CREDENTIAL` in the frontend env (comma-separated URLs supported).
+With no TURN provider configured only Cloudflare's free STUN server is used.
 
 The same server also runs on any Node host (Render, Railway, Fly, a VPS):
 

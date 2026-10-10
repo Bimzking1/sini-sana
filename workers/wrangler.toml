@@ -24,12 +24,10 @@ ALLOWED_ORIGINS = ""
 #   npx wrangler secret put TURN_KEY_ID
 #   npx wrangler secret put TURN_API_TOKEN
 #
-# Optional Metered / Open Relay TURN (free, no credit card). Sign up at
-# https://dashboard.metered.ca/signup?tool=turnserver. The app name is in the
-# dashboard sidebar; the secret key is under Dashboard -> Developers. Set:
-#   npx wrangler secret put METERED_APP_NAME     # e.g. "sinisana"
-#   npx wrangler secret put METERED_SECRET_KEY
-# (Alternatively set METERED_API_KEY to a single credential-scoped API key.)
+# TURN via Metered / Open Relay is configured on the client instead, using the
+# VITE_TURN_URL / VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL build variables
+# (Metered caps the number of credentials, so a single static credential is
+# used rather than minting one per request).
 #
-# Cloudflare is tried first; if unset, Metered is used. With neither configured
-# the worker serves Cloudflare's free STUN server only.
+# With Cloudflare unset the worker serves Cloudflare's free STUN server only;
+# the browser still relays through the client-configured Metered TURN.
