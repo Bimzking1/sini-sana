@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildIceServers, parseStunServerList } from "./iceConfig";
+import { buildIceServers, mergeIceServers, parseServerList } from "./iceConfig";
 
-describe("stun server parsing", () => {
+describe("server list parsing", () => {
   it("splits, trims and drops empty entries", () => {
-    expect(parseStunServerList("a.example, b.example ,, c.example")).toEqual([
+    expect(parseServerList("a.example, b.example ,, c.example")).toEqual([
       "a.example",
       "b.example",
       "c.example",
     ]);
-    expect(parseStunServerList("  ")).toEqual([]);
+    expect(parseServerList("  ")).toEqual([]);
   });
 });
 
@@ -26,7 +26,23 @@ describe("buildIceServers", () => {
       turnCredential: "secret",
     });
     expect(config.iceServers).toEqual([
-      { urls: "turn:x", username: "user", credential: "secret" },
+      { urls: ["turn:x"], username: "user", credential: "secret" },
+    ]);
+  });
+
+  it("supports a comma-separated list of turn transports", () => {
+    const config = buildIceServers({
+      stunServers: "",
+      turnUrl: "turn:x:3478?transport=udp, turns:x:5349?transport=tcp",
+      turnUsername: "user",
+      turnCredential: "secret",
+    });
+    expect(config.iceServers).toEqual([
+      {
+        urls: ["turn:x:3478?transport=udp", "turns:x:5349?transport=tcp"],
+        username: "user",
+        credential: "secret",
+      },
     ]);
   });
 
@@ -36,6 +52,28 @@ describe("buildIceServers", () => {
       turnUrl: "turn:x",
       turnUsername: "user",
     });
-    expect(config.iceServers).toEqual([{ urls: "turn:x" }]);
+    expect(config.iceServers).toEqual([{ urls: ["turn:x"] }]);
+  });
+});
+
+describe("mergeIceServers", () => {
+  it("concatenates lists and drops duplicate url sets", () => {
+    const merged = mergeIceServers(
+      [{ urls: "stun:a" }, { urls: "turn:x" }],
+      [{ urls: "stun:a" }, { urls: "turn:y", username: "u", credential: "c" }],
+    );
+    expect(merged).toEqual([
+      { urls: "stun:a" },
+      { urls: "turn:x" },
+      { urls: "turn:y", username: "u", credential: "c" },
+    ]);
+  });
+
+  it("treats reordered url arrays as duplicates", () => {
+    const config = mergeIceServers(
+      [{ urls: ["a", "b"] }],
+      [{ urls: ["b", "a"] }],
+    );
+    expect(config).toEqual([{ urls: ["a", "b"] }]);
   });
 });

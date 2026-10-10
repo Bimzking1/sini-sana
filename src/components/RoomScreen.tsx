@@ -4,6 +4,7 @@ import type { IncomingTransferEvent, TransferItem } from "../types/transfer";
 import type { WebRtcStatus } from "../types/webrtc";
 import { buildRoomUrl } from "../lib/room/roomId";
 import { useAppConfig } from "../hooks/useAppConfig";
+import { useIceServers } from "../hooks/useIceServers";
 import { useRoom } from "../hooks/useRoom";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { useClipboard } from "../hooks/useClipboard";
@@ -33,6 +34,7 @@ function describesMobileDevice(): boolean {
 
 export default function RoomScreen({ mode, code, onLeave }: RoomScreenProps) {
   const config = useAppConfig();
+  const iceServers = useIceServers(config);
   const [phase, setPhase] = useState<RoomPhase>(mode === "create" ? "creating" : "connecting");
   const [message, setMessage] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -144,7 +146,7 @@ export default function RoomScreen({ mode, code, onLeave }: RoomScreenProps) {
   }, []);
 
   const rtc = useWebRTC({
-    iceServers: config.iceServers,
+    iceServers,
     sendSignal: room.sendSignal,
     onStatusChange,
     onIncoming,

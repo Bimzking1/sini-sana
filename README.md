@@ -98,7 +98,7 @@ src/                     The React app (Vite + TypeScript + Tailwind)
 | ----------------------- | ---------------------------- | -------------------------------------------- |
 | `VITE_SIGNALING_URL`    | `ws://<host>:3001`           | WebSocket URL of the signaling server        |
 | `VITE_STUN_SERVER`      | Google STUN (`:19302`)       | Comma-separated STUN servers                 |
-| `VITE_TURN_URL`         | (none)                       | Optional TURN relay                          |
+| `VITE_TURN_URL`         | (none)                       | Optional TURN relay(s), comma-separated        |
 | `VITE_TURN_USERNAME`    | (none)                       | TURN username (TURN only used with credential) |
 | `VITE_TURN_CREDENTIAL`  | (none)                       | TURN credential                              |
 | `PORT`                  | `3001`                       | Server listen port                            |
@@ -130,6 +130,39 @@ npm run deploy:signaling    # wrangler deploy --config workers/wrangler.toml
 Set `ALLOWED_ORIGINS` in `workers/wrangler.toml` (or as a dashboard variable) to
 your site's host, e.g. `sinisana.netlify.app`. Leaving it empty allows any
 origin, which is fine for testing but not recommended for production.
+
+**Connectivity (TURN)** — same-Wi‑Fi transfers work with STUN alone, but across
+different networks (symmetric/carrier-grade NAT, firewalled UDP) a TURN relay is
+required. The Worker hands out short-lived TURN credentials so long-term secrets
+never reach the browser. Two providers are supported; Cloudflare is tried first,
+then Metered. The app fetches `GET /ice-servers` from the signaling host and
+merges the relays into its ICE servers.
+
+*Metered / Open Relay (free, no credit card):*
+
+1. Create a free account at
+   <https://dashboard.metered.ca/signup?tool=turnserver>. Note your **app name**
+   (dashboard sidebar) and **secret key** (Dashboard → Developers).
+2. Store them as Worker secrets and redeploy:
+   ```sh
+   npx wrangler secret put METERED_APP_NAME   # e.g. "sinisana"
+   npx wrangler secret put METERED_SECRET_KEY
+   npx wrangler deploy --config workers/wrangler.toml
+   ```
+
+*Cloudflare Realtime TURN (requires a payment method on file):*
+
+1. In the Cloudflare dashboard, create a **TURN key** (Realtime → TURN Server).
+2. Store its ID and API token as Worker secrets and redeploy:
+   ```sh
+   npx wrangler secret put TURN_KEY_ID
+   npx wrangler secret put TURN_API_TOKEN
+   npx wrangler deploy --config workers/wrangler.toml
+   ```
+
+With no provider configured the Worker serves Cloudflare's free STUN server
+only. You can also skip the Worker and set `VITE_TURN_URL` / `VITE_TURN_USERNAME`
+/ `VITE_TURN_CREDENTIAL` in the frontend env (comma-separated URLs supported).
 
 The same server also runs on any Node host (Render, Railway, Fly, a VPS):
 
