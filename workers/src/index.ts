@@ -10,6 +10,21 @@ const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
 interface Env {
   ROOMS: DurableObjectNamespace;
   ALLOWED_ORIGINS?: string;
+  TURN_KEY_ID?: string;
+  TURN_API_TOKEN?: string;
+  METERED_APP_NAME?: string;
+  METERED_SECRET_KEY?: string;
+  METERED_API_KEY?: string;
+}
+
+interface CloudflareIceServers {
+  iceServers?: unknown;
+}
+
+interface IceServer {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
 }
 
 interface PeerAttachment {
@@ -29,15 +44,29 @@ interface PeerAttachment {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const origin = request.headers.get("Origin");
+    const cors = corsHeaders(origin, env.ALLOWED_ORIGINS);
+
     if (request.method === "GET" && url.pathname === "/healthz") {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
     }
+
+    if (request.method === "GET" && url.pathname === "/ice-servers") {
+      if (!originAllowed(origin, env.ALLOWED_ORIGINS)) {
+        return new Response("Origin not allowed", { status: 403, headers: cors });
+      }
+      const iceServers = await resolveIceServers(env);
+      return new Response(JSON.stringify({ iceServers }), {
+        headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
+    }
+
     if (!(request.headers.get("Upgrade") ?? "").toLowerCase().includes("websocket")) {
       return new Response("Not found", { status: 404 });
     }
-    if (!originAllowed(request.headers.get("Origin"), env.ALLOWED_ORIGINS)) {
+    if (!originAllowed(origin, env.ALLOWED_ORIGINS)) {
       return new Response("Origin not allowed", { status: 403 });
     }
     const id = env.ROOMS.idFromName("rooms");
@@ -230,6 +259,118 @@ function safeClose(socket: WebSocket, code = 1000, reason = ""): void {
   } catch {
     // Ignore sockets that are already closed.
   }
+}
+
+const CLOUDFLARE_ICE_FALLBACK: IceServer[] = [{ urls: "stun:stun.cloudflare.com:3478" }];
+const TURN_CREDENTIAL_TTL_SECONDS = 2 * 60 * 60;
+
+/**
+ * Returns ICE servers for browsers to negotiate a peer connection. Always
+ * includes Cloudflare's free STUN server; when a TURN provider is configured
+ * (Cloudflare Realtime or Metered/Open Relay) it also mints short-lived TURN
+ * credentials so long-term secrets never reach the client.
+ */
+async function resolveIceServers(env: Env): Promise<IceServer[]> {
+  const cloudflare = await fetchCloudflareTurn(env);
+  if (cloudflare) return cloudflare;
+  const metered = await fetchMeteredTurn(env);
+  if (metered) return metered;
+  return CLOUDFLARE_ICE_FALLBACK;
+}
+
+async function fetchCloudflareTurn(env: Env): Promise<IceServer[] | null> {
+  const keyId = env.TURN_KEY_ID?.trim();
+  const apiToken = env.TURN_API_TOKEN?.trim();
+  if (!keyId || !apiToken) return null;
+  try {
+    const response = await fetch(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${keyId}/credentials/generate`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ttl: TURN_CREDENTIAL_TTL_SECONDS }),
+      },
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as CloudflareIceServers;
+    if (!Array.isArray(data.iceServers)) return null;
+    return data.iceServers as IceServer[];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetches ICE servers from the Metered/Open Relay REST API. With an account
+ * secret key the worker first mints a short-lived credential, then exchanges
+ * it for the relay list. A pre-made credential-scoped API key can be supplied
+ * directly instead. The response is already a WebRTC `iceServers` array.
+ */
+/**
+ * Accepts an app name as shown in the Metered dashboard sidebar (`sinisana`)
+ * and tolerates the common mistake of pasting the full domain
+ * (`https://sinisana.metered.live/`).
+ */
+function normalizeMeteredAppName(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const value = raw
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/.*$/, "")
+    .replace(/\.metered\.live$/i, "");
+  return value.length > 0 ? value : null;
+}
+
+async function fetchMeteredTurn(env: Env): Promise<IceServer[] | null> {
+  const appName = normalizeMeteredAppName(env.METERED_APP_NAME);
+  if (!appName) return null;
+  const apiKey =
+    env.METERED_API_KEY?.trim() ??
+    (env.METERED_SECRET_KEY?.trim()
+      ? await createMeteredCredential(appName, env.METERED_SECRET_KEY.trim())
+      : null);
+  if (!apiKey) return null;
+  try {
+    const response = await fetch(
+      `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(apiKey)}`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as unknown;
+    if (!Array.isArray(data)) return null;
+    return data as IceServer[];
+  } catch {
+    return null;
+  }
+}
+
+async function createMeteredCredential(appName: string, secretKey: string): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `https://${appName}.metered.live/api/v1/turn/credential?secretKey=${encodeURIComponent(secretKey)}`,
+      {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ expiryInSeconds: TURN_CREDENTIAL_TTL_SECONDS }),
+      },
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as { apiKey?: unknown };
+    return typeof data.apiKey === "string" ? data.apiKey : null;
+  } catch {
+    return null;
+  }
+}
+
+function corsHeaders(origin: string | null, raw: string | undefined): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin": originAllowed(origin, raw) && origin ? origin : "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    Vary: "Origin",
+  };
 }
 
 function originAllowed(origin: string | null, raw: string | undefined): boolean {

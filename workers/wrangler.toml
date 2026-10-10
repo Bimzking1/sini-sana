@@ -17,3 +17,19 @@ new_sqlite_classes = ["RoomDirectory"]
 # origin (handy while testing; set it to your site's host in production).
 [vars]
 ALLOWED_ORIGINS = ""
+
+# Optional Cloudflare Realtime TURN for NAT/firewall traversal. Create a TURN
+# key in the Cloudflare dashboard, then set the two secrets below (do NOT put
+# them in this file):
+#   npx wrangler secret put TURN_KEY_ID
+#   npx wrangler secret put TURN_API_TOKEN
+#
+# Optional Metered / Open Relay TURN (free, no credit card). Sign up at
+# https://dashboard.metered.ca/signup?tool=turnserver. The app name is in the
+# dashboard sidebar; the secret key is under Dashboard -> Developers. Set:
+#   npx wrangler secret put METERED_APP_NAME     # e.g. "sinisana"
+#   npx wrangler secret put METERED_SECRET_KEY
+# (Alternatively set METERED_API_KEY to a single credential-scoped API key.)
+#
+# Cloudflare is tried first; if unset, Metered is used. With neither configured
+# the worker serves Cloudflare's free STUN server only.
